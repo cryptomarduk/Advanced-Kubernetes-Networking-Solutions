@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: protect-database
+  namespace: database
+spec:
+  podSelector:
+    matchLabels:
+      app: postgres
+  policyTypes:
+  - Ingress
+  ingress:
+  # Only allow incoming connections from backend services
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: backend
+      podSelector:
+        matchLabels:
+          app: backend-api
+    - namespaceSelector:
+        matchLabels:
+          name: backend
+      podSelector:
+        matchLabels:
+          app: auth-service
+    ports:
+    - protocol: TCP
+      port: 5432  # PostgreSQL port
