@@ -1,0 +1,34 @@
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: istio-system
+spec:
+  # Enable mTLS for all services in the mesh
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: legacy-backend
+  namespace: legacy
+spec:
+  # Allow non-TLS traffic for legacy applications
+  selector:
+    matchLabels:
+      app: legacy-service
+  mtls:
+    mode: PERMISSIVE
+---
+# mTLS destination rule for the entire mesh
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: default
+  namespace: istio-system
+spec:
+  host: "*.local"
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
