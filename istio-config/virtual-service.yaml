@@ -1,0 +1,69 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: frontend-vs
+  namespace: frontend
+spec:
+  hosts:
+  - "frontend.example.com"
+  gateways:
+  - istio-system/frontend-gateway
+  http:
+  # Main route
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: frontend-service
+        port:
+          number: 80
+      weight: 90
+    # Canary release with 10% traffic
+    - destination:
+        host: frontend-service-canary
+        port:
+          number: 80
+      weight: 10
+  # Route for API endpoints
+  - match:
+    - uri:
+        prefix: /api
+    route:
+    - destination:
+        host: api-gateway
+        port:
+          number: 80
+    # Adding retry logic for API calls
+    retries:
+      attempts: 3
+      perTryTimeout: 2s
+      retryOn: gateway-error,connect-failure,refused-stream
+    # Adding timeout for API calls
+    timeout: 10s
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: backend-vs
+  namespace: backend
+spec:
+  hosts:
+  - backend-service
+  http:
+  - route:
+    - destination:
+        host: backend-service
+        port:
+          number: 8080
+    # Circuit breaking handled by destination rule
+    # Fault injection for testing
+    fault:
+      delay:
+        percentage:
+          value: 5
+        fixedDelay: 1s
+      abort:
+        percentage:
+          value: 2
+        httpStatus: 500
