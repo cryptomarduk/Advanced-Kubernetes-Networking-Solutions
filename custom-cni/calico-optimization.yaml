@@ -1,0 +1,100 @@
+apiVersion: operator.tigera.io/v1
+kind: Installation
+metadata:
+  name: default
+spec:
+  # Configures Calico networking
+  calicoNetwork:
+    # Mode determines how Calico interacts with the underlying network
+    # VXLAN encapsulates all BGP networking
+    # BGP networking uses native routing
+    # IPIP is an alternative encapsulation method
+    ipPools:
+    - blockSize: 26
+      cidr: 192.168.0.0/16
+      encapsulation: VXLANCrossSubnet
+      natOutgoing: Enabled
+      nodeSelector: all()
+    
+    # MTU configuration (important for performance)
+    mtu: 1440
+    
+    # Set to true to enable IPv6 networking support
+    enableIPv6: false
+    
+    # BGP configuration
+    nodeAddressAutodetectionV4:
+      firstFound: true
+    
+    # Optimized for performance
+    linuxDataplane: BPF
+    
+    # Recommended to set to DirectHost when using BPF
+    hostPorts: Enabled
+    
+    # Advanced configurations
+    containerIPForwarding: Enabled
+    
+  # Optimized for high throughput
+  nodeMetricsPort: 9091
+  
+  # Control plane configuration for large clusters
+  controlPlaneReplicas: 3
+  
+  # Enable Calico Enterprise features if license is available
+  # variant: TigeraSecureEnterprise
+  
+  # Component resource requirements
+  componentResources:
+  - componentName: Node
+    resourceRequirements:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 500m
+        memory: 512Mi
+  - componentName: Typha
+    resourceRequirements:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 300m
+        memory: 256Mi
+        
+---
+# FelixConfiguration for tuning Calico's data plane
+apiVersion: projectcalico.org/v3
+kind: FelixConfiguration
+metadata:
+  name: default
+spec:
+  # Set log severity: Debug, Info, Warning, Error, Fatal
+  logSeverityScreen: Info
+  # Configures Felix's metrics reporting
+  prometheusMetricsEnabled: true
+  # Interval at which to report metrics
+  prometheusMetricsInterval: 10s
+  # Buffer size for interface metrics
+  prometheusMetricsPort: 9091
+  # Disable flow logs for better performance
+  flowLogsEnabled: false
+  # iptables configurations
+  iptablesRefreshInterval: "10s"
+  iptablesPostWriteCheckIntervalSecs: 1
+  # BPF settings (when using BPF data plane)
+  bpfEnabled: true
+  bpfDisableUnprivileged: true
+  # Connection tracking
+  # Increase CT table size for high connection loads
+  bpfConntrackTimeouts:
+    tcp:
+      established: "21600s"
+      unestablished: "25s"
+    udp:
+      established: "300s"
+      unestablished: "25s"
+    icmp:
+      established: "15s"
+      unestablished: "15s"
