@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cilium-config
+  namespace: kube-system
+data:
+  # Enable BPF-based networking
+  tunnel: "disabled"
+  enable-ipv4: "true"
+  enable-ipv6: "true"
+  # Use native routing instead of tunneling
+  # for better performance
+  native-routing-cidr: "10.0.0.0/8"
+  # Enable Kubernetes DNS policy for Kubernetes DNS visibility
+  enable-k8s-networkpolicy: "true"
+  # Enable advanced networking features
+  enable-l7-proxy: "true"
+  enable-endpoint-routes: "true"
+  # Configure metrics
+  prometheus-serve-addr: ":9090"
+  # Enable Hubble for observability
+  enable-hubble: "true"
+  hubble-socket-path: "/var/run/cilium/hubble.sock"
+  hubble-metrics-server: ":9091"
+  hubble-metrics: "drop,tcp,flow,port-distribution,icmp,http"
+  # eBPF map sizing for large clusters
+  bpf-map-dynamic-size-ratio: "0.0025"
+  # Resource optimization
+  preallocate-bpf-maps: "true"
+  # Bandwidth Manager
+  enable-bandwidth-manager: "true"
+  # Monitor aggregation level
+  monitor-aggregation: "medium"
+  # Flow logging for debugging
+  debug: "false"
+  enable-flow-logging: "true"
+  # Pods health checking
+  enable-endpoint-health-checking: "true"
+  # Session affinity 
+  enable-local-redirect-policy: "true"
+  # Cluster-wide encryption
+  encrypt-node: "false"
+  # Service load balancing options
+  loadbalancer-mode: "snat"
+  # Connection tracking garbage collection interval
+  conntrack-gc-interval: "0h0m30s"
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: cilium
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      k8s-app: cilium
+  template:
+    metadata:
+      labels:
+        k8s-app: cilium
+    spec:
+      serviceAccountName: cilium
+      containers:
+      - name: cilium-agent
+        image: quay.io/cilium/cilium:v1.12.1
+        command: ["cilium-agent"]
+        args:
+          - "--config-dir=/tmp/cilium/config-map"
+        resources:
+          # Optimize resources for high-performance networking
+          limits:
+            cpu: "1"
+            memory: "2Gi"
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+        volumeMounts:
+        - name: cilium-config
+          mountPath: /tmp/cilium/config-map
+          readOnly: true
+        # Other required volume mounts for Cilium
+      volumes:
+      - name: cilium-config
+        configMap:
+          name: cilium-config
