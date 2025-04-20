@@ -1,0 +1,103 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: global-ingress
+  namespace: ingress-system
+  annotations:
+    kubernetes.io/ingress.class: "global-nginx"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    # Global load balancing annotations
+    global.ingress.kubernetes.io/multi-cluster: "true"
+    global.ingress.kubernetes.io/clusters: "cluster1,cluster2,cluster3"
+    global.ingress.kubernetes.io/algorithm: "geo"
+    global.ingress.kubernetes.io/health-check-path: "/health"
+    global.ingress.kubernetes.io/health-check-interval: "10s"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+  - hosts:
+    - "*.example.com"
+    secretName: example-wildcard-tls
+  rules:
+  - host: "api.example.com"
+    http:
+      paths:
+      - path: /users(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: user-service-global
+            port:
+              number: 80
+      - path: /products(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: product-service-global
+            port:
+              number: 80
+      - path: /orders(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: order-service-global
+            port:
+              number: 80
+  - host: "www.example.com"
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend-service-global
+            port:
+              number: 80
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: global-ingress-controller-config
+  namespace: ingress-system
+data:
+  global-geo-database: |
+    # GeoIP database configuration
+    geoip-database-path: "/etc/nginx/geoip/GeoIP2-City.mmdb"
+    
+  global-ingress-config: |
+    # Global load balancing config
+    worker_processes auto;
+    
+    events {
+      worker_connections 4096;
+      multi_accept on;
+    }
+    
+    http {
+      # Optimize for multi-cluster traffic
+      keepalive_timeout 65;
+      keepalive_requests 100;
+      sendfile on;
+      tcp_nopush on;
+      tcp_nodelay on;
+      
+      # Large client header buffers for JWT tokens
+      large_client_header_buffers 4 32k;
+      
+      # Geo-based routing
+      map $geoip_city_country_code $closest_cluster {
+        default cluster1;
+        US cluster1;
+        EU cluster2;
+        APAC cluster3;
+      }
+      
+      # Default backend for health checking
+      server {
+        listen 8080;
+        location /health {
+          return 200 "healthy\n";
+        }
+      }
+    }
