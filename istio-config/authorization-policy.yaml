@@ -1,0 +1,68 @@
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: frontend-policy
+  namespace: frontend
+spec:
+  selector:
+    matchLabels:
+      app: frontend
+  # Allow requests from specific sources
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"]
+    to:
+    - operation:
+        methods: ["GET"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: backend-api-policy
+  namespace: backend
+spec:
+  selector:
+    matchLabels:
+      app: backend-api
+  # Rules for different endpoints
+  rules:
+  # Public endpoints accessible from frontend
+  - from:
+    - source:
+        principals: ["cluster.local/ns/frontend/sa/frontend-service-account"]
+    to:
+    - operation:
+        methods: ["GET"]
+        paths: ["/api/public/*"]
+  # Protected endpoints require JWT authentication
+  - from:
+    - source:
+        principals: ["cluster.local/ns/frontend/sa/frontend-service-account"]
+    to:
+    - operation:
+        methods: ["GET", "POST", "PUT", "DELETE"]
+        paths: ["/api/protected/*"]
+    when:
+    - key: request.auth.claims[iss]
+      values: ["https://accounts.example.com"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: database-policy
+  namespace: database
+spec:
+  selector:
+    matchLabels:
+      app: database
+  # Only allow access from specific services
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/backend/sa/backend-service-account"]
+    - source:
+        principals: ["cluster.local/ns/backend/sa/auth-service-account"]
+    to:
+    - operation:
+        ports: ["5432"]
