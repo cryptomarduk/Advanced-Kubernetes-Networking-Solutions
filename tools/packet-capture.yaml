@@ -1,0 +1,119 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: packet-capture
+  namespace: network-tools
+spec:
+  containers:
+  - name: tcpdump
+    image: corfr/tcpdump:latest
+    command:
+    - /bin/sh
+    - -c
+    - |
+      trap "exit 0" SIGTERM
+      mkdir -p /captures
+      echo "Starting packet capture daemon..."
+      while true; do
+        # Check if a capture job exists
+        if [ -f /config/capture-job.json ]; then
+          echo "Found capture job configuration"
+          # Parse job config
+          INTERFACE=$(jq -r .interface /config/capture-job.json)
+          FILTER=$(jq -r .filter /config/capture-job.json)
+          DURATION=$(jq -r .duration /config/capture-job.json)
+          FILENAME=$(jq -r .filename /config/capture-job.json)
+          
+          echo "Starting capture with parameters:"
+          echo "Interface: $INTERFACE"
+          echo "Filter: $FILTER"
+          echo "Duration: $DURATION seconds"
+          echo "Output file: /captures/$FILENAME"
+          
+          # Run the capture
+          timeout $DURATION tcpdump -i $INTERFACE -w /captures/$FILENAME $FILTER
+          
+          echo "Capture completed, waiting for next job..."
+          rm /config/capture-job.json
+        fi
+        sleep 5
+      done
+    volumeMounts:
+    - name: captures
+      mountPath: /captures
+    - name: config
+      mountPath: /config
+    securityContext:
+      privileged: true  # Required for packet capture
+      capabilities:
+        add: ["NET_ADMIN", "NET_RAW"]
+  volumes:
+  - name: captures
+    persistentVolumeClaim:
+      claimName: packet-captures-pvc
+  - name: config
+    configMap:
+      name: packet-capture-config
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: packet-captures-pvc
+  namespace: network-tools
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: packet-capture-config
+  namespace: network-tools
+data:
+  README.md: |
+    # Packet Capture Tool
+    
+    This tool allows you to capture network packets for debugging in Kubernetes.
+    
+    ## How to use:
+    
+    1. Create a capture job by updating the capture-job.json ConfigMap with:
+       - interface: Network interface (e.g., "any", "eth0")
+       - filter: tcpdump filter expression (e.g., "port 80", "host 10.0.0.1")
+       - duration: Capture duration in seconds
+       - filename: Output filename (will be saved in the PVC)
+    
+    2. Wait for the capture to complete
+    
+    3. Copy the capture file:
+       ```
+       kubectl cp network-tools/packet-capture:/captures/your-capture.pcap ./your-capture.pcap
+       ```
+    
+    4. Analyze with Wireshark or other tools
+  
+  # Template for capture job (commented out so it doesn't run immediately)
+  # capture-job.json: |
+  #   {
+  #     "interface": "any",
+  #     "filter": "port 80",
+  #     "duration": 60,
+  #     "filename": "http-traffic.pcap"
+  #   }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: packet-capture
+  namespace: network-tools
+spec:
+  selector:
+    app: packet-capture
+  ports:
+  - port: 80
+    targetPort: 80
+    name: dummy  # Not actually used, just to create a service
+  type: ClusterIP
