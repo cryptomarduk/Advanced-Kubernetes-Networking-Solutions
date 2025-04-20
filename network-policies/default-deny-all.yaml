@@ -1,0 +1,13 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: secure-namespace
+spec:
+  # Empty podSelector matches all pods
+  podSelector: {}
+  # No ingress rules means no incoming traffic allowed
+  policyTypes:
+  - Ingress
+  - Egress
+  # No egress rules means no outgoing traffic allowed
