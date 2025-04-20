@@ -1,0 +1,46 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: restrict-app-outbound
+  namespace: app-namespace
+spec:
+  podSelector:
+    matchLabels:
+      app: web-frontend
+  policyTypes:
+  - Egress
+  egress:
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  
+  # Allow traffic to backend-api
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: backend
+      podSelector:
+        matchLabels:
+          app: backend-api
+    ports:
+    - protocol: TCP
+      port: 8080
+  
+  # Allow traffic to monitoring system
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 9090
