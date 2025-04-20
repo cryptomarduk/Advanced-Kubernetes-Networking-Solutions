@@ -1,0 +1,94 @@
+apiVersion: kubeadm.k8s.io/v1beta3
+kind: ClusterConfiguration
+networking:
+  serviceSubnet: "10.96.0.0/16,fd00:1::/112"
+  podSubnet: "10.244.0.0/16,fd00:2::/112"
+  dnsDomain: "cluster.local"
+---
+apiVersion: kubeadm.k8s.io/v1beta3
+kind: InitConfiguration
+nodeRegistration:
+  kubeletExtraArgs:
+    node-ip: "<IPv4-address>,<IPv6-address>"
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+cgroupDriver: systemd
+featureGates:
+  IPv6DualStack: true
+---
+apiVersion: kubeproxy.config.k8s.io/v1alpha1
+kind: KubeProxyConfiguration
+ipvs:
+  strictARP: true
+mode: ipvs
+---
+# Calico dual-stack configuration
+apiVersion: projectcalico.org/v3
+kind: IPPool
+metadata:
+  name: default-ipv4-pool
+spec:
+  cidr: 10.244.0.0/16
+  ipipMode: Always
+  natOutgoing: true
+---
+apiVersion: projectcalico.org/v3
+kind: IPPool
+metadata:
+  name: default-ipv6-pool
+spec:
+  cidr: fd00:2::/112
+  ipipMode: Always
+  natOutgoing: true
+---
+# Cilium dual-stack configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cilium-dual-stack-config
+  namespace: kube-system
+data:
+  # Enable both IPv4 and IPv6
+  enable-ipv4: "true"
+  enable-ipv6: "true"
+  # IPv6 configurations
+  ipv6-service-range: "fd00:1::/112"
+  ipv6-range: "fd00:2::/112"
+  # Dual-stack settings
+  tunnel: "disabled"
+  # Native routing gives the best performance for dual-stack
+  ipv6-native-routing-cidr: "fd00::/100"
+  # Load balancing mode for dual-stack
+  bpf-lb-algorithm: "maglev"
+  # Enable L7 proxies for both IPv4 and IPv6
+  enable-l7-proxy: "true"
+---
+# Node network configuration for dual-stack
+# For systemd-networkd
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: node-networking-dual-stack
+  namespace: kube-system
+data:
+  20-wired.network: |
+    [Match]
+    Name=eth0
+    
+    [Network]
+    DHCP=ipv4
+    IPv6AcceptRA=false
+    
+    [Address]
+    Address=<IPv6-address>/64
+    
+    [Route]
+    Destination=::/0
+    Gateway=<IPv6-gateway>
+    
+  99-dual-stack.conf: |
+    net.ipv6.conf.all.forwarding=1
+    net.ipv4.ip_forward=1
+    net.ipv6.conf.all.disable_ipv6=0
+    net.ipv6.conf.default.disable_ipv6=0
