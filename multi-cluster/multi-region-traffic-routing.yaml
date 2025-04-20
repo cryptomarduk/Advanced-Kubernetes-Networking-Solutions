@@ -1,0 +1,151 @@
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: multi-region-gateway
+  namespace: istio-system
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: multi-region-tls
+    hosts:
+    - "*.global.example.com"
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: multi-region-routing
+  namespace: istio-system
+spec:
+  hosts:
+  - "api.global.example.com"
+  gateways:
+  - multi-region-gateway
+  http:
+  # Route based on geographic headers
+  - match:
+    - headers:
+        x-region:
+          exact: us-east
+    route:
+    - destination:
+        host: api-service.us-east-svc.global
+        port:
+          number: 80
+  - match:
+    - headers:
+        x-region:
+          exact: us-west
+    route:
+    - destination:
+        host: api-service.us-west-svc.global
+        port:
+          number: 80
+  - match:
+    - headers:
+        x-region:
+          exact: eu-west
+    route:
+    - destination:
+        host: api-service.eu-west-svc.global
+        port:
+          number: 80
+  # Default routing using weighted distribution
+  - route:
+    - destination:
+        host: api-service.us-east-svc.global
+        port:
+          number: 80
+      weight: 40
+    - destination:
+        host: api-service.us-west-svc.global
+        port:
+          number: 80
+      weight: 30
+    - destination:
+        host: api-service.eu-west-svc.global
+        port:
+          number: 80
+      weight: 30
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: multi-region-api
+  namespace: istio-system
+spec:
+  host: "*.global.example.com"
+  trafficPolicy:
+    loadBalancer:
+      simple: LEAST_REQUEST
+    connectionPool:
+      tcp:
+        maxConnections: 100
+        connectTimeout: 5s
+      http:
+        http1MaxPendingRequests: 100
+        maxRequestsPerConnection: 10
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 60s
+  subsets:
+  - name: us-east
+    labels:
+      region: us-east
+  - name: us-west
+    labels:
+      region: us-west
+  - name: eu-west
+    labels:
+      region: eu-west
+---
+apiVersion: networking.istio.io/v1beta1
+kind: EnvoyFilter
+metadata:
+  name: geo-headers
+  namespace: istio-system
+spec:
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: GATEWAY
+      listener:
+        filterChain:
+          filter:
+            name: "envoy.filters.network.http_connection_manager"
+            subFilter:
+              name: "envoy.filters.http.router"
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.lua
+        typed_config:
+          "@type": "type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua"
+          inlineCode: |
+            function envoy_on_request(request_handle)
+              -- Determine region based on IP address
+              local client_ip = request_handle:headers():get("x-forwarded-for")
+              local region = determine_region(client_ip)
+              request_handle:headers():add("x-region", region)
+            end
+            
+            function determine_region(ip)
+              -- Simple IP range check for demonstration
+              -- In production, use a proper GeoIP database
+              if ip:find("^172%.16%.") then
+                return "us-east"
+              elseif ip:find("^172%.17%.") then
+                return "us-west"
+              elseif ip:find("^172%.18%.") then
+                return "eu-west"
+              else
+                return "us-east" -- Default region
+              end
+            end
