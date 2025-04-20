@@ -1,0 +1,70 @@
+apiVersion: core.kubefed.io/v1beta1
+kind: KubeFedConfig
+metadata:
+  name: kubefed
+  namespace: kube-federation-system
+spec:
+  scope: Cluster
+  controllerManager:
+    featureGates:
+      PushReconciler: "Enabled"
+      SchedulerPreferences: "Enabled"
+      CrossClusterServiceDiscovery: "Enabled"
+    clusterHealthCheck:
+      period: 10
+      failureThreshold: 3
+      successThreshold: 1
+      timeout: 3
+    leaderElect:
+      resourceLock: configmaps
+---
+apiVersion: core.kubefed.io/v1beta1
+kind: FederatedTypeConfig
+metadata:
+  name: services
+  namespace: kube-federation-system
+spec:
+  federatedType:
+    group: types.kubefed.io
+    kind: FederatedService
+    pluralName: federatedservices
+    scope: Namespaced
+    version: v1beta1
+  propagation: Enabled
+  targetType:
+    kind: Service
+    pluralName: services
+    scope: Namespaced
+    version: v1
+---
+apiVersion: core.kubefed.io/v1beta1
+kind: ClusterPropagatedVersion
+metadata:
+  name: propagated-versions
+spec:
+  clusterVersions:
+  - clusterName: cluster1
+    version: "1"
+  - clusterName: cluster2
+    version: "1"
+---
+apiVersion: scheduling.kubefed.io/v1alpha1
+kind: ReplicaSchedulingPreference
+metadata:
+  name: frontend-app
+  namespace: federation
+spec:
+  targetKind: FederatedDeployment
+  totalReplicas: 24
+  clusters:
+    # Primary production cluster
+    cluster1:
+      minReplicas: 12
+      maxReplicas: 18
+      weight: 2
+    # Secondary production cluster
+    cluster2:
+      minReplicas: 6
+      maxReplicas: 12
+      weight: 1
+  rebalance: true
