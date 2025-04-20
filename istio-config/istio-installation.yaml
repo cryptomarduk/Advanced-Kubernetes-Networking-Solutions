@@ -1,0 +1,99 @@
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  namespace: istio-system
+  name: istio-control-plane
+spec:
+  profile: default
+  # Use the default profile with custom settings
+  components:
+    # Enable the Istio ingress gateway
+    ingressGateways:
+    - name: istio-ingressgateway
+      enabled: true
+      k8s:
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+    # Enable the Istio egress gateway
+    egressGateways:
+    - name: istio-egressgateway
+      enabled: true
+      k8s:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 300m
+            memory: 256Mi
+    # Pilot configuration for service discovery
+    pilot:
+      enabled: true
+      k8s:
+        resources:
+          requests:
+            cpu: 500m
+            memory: 2048Mi
+          limits:
+            cpu: 1000m
+            memory: 4096Mi
+        # Enable horizontal pod autoscaling
+        hpaSpec:
+          minReplicas: 1
+          maxReplicas: 5
+          metrics:
+            - type: Resource
+              resource:
+                name: cpu
+                targetAverageUtilization: 80
+  # Mesh configuration
+  meshConfig:
+    # Enable access logging
+    accessLogFile: "/dev/stdout"
+    # Configure the proxy
+    defaultConfig:
+      # Configure tracing
+      tracing:
+        sampling: 100.0
+        zipkin:
+          address: zipkin.istio-system:9411
+      # Configure connection timeout
+      connectTimeout: 10s
+    # Enable mTLS
+    enableAutoMtls: true
+    # Enable outbound traffic policy
+    outboundTrafficPolicy:
+      mode: ALLOW_ANY
+  # Values for the default profile
+  values:
+    # Global values
+    global:
+      proxy:
+        # Resources for each sidecar proxy
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 300m
+            memory: 256Mi
+      # Default Kubernetes network configuration
+      network: default
+    # Prometheus configuration for metrics
+    prometheus:
+      enabled: true
+    # Grafana configuration for dashboards
+    grafana:
+      enabled: true
+    # Kiali configuration for visualization
+    kiali:
+      enabled: true
+    # Jaeger configuration for tracing
+    tracing:
+      enabled: true
+      provider: jaeger
