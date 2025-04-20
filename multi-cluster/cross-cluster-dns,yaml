@@ -1,0 +1,126 @@
+apiVersion: multicluster.x-k8s.io/v1alpha1
+kind: ServiceExport
+metadata:
+  name: backend-api
+  namespace: backend
+---
+apiVersion: multicluster.x-k8s.io/v1alpha1
+kind: ServiceImport
+metadata:
+  name: backend-api
+  namespace: backend
+spec:
+  type: ClusterSetIP  # Makes the service available as if it were local
+  ports:
+  - port: 8080
+    protocol: TCP
+  ips:
+  - 10.96.100.1  # Virtual IP for the imported service
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  multicluster.server: |
+    # Configure the multicluster plugin for CoreDNS
+    multicluster.cluster.local:53 {
+      errors
+      cache 30
+      forward . 10.96.0.10  # Forward to the multicluster DNS service
+    }
+    cluster1.global:53 {
+      errors
+      cache 30
+      forward . 10.100.0.10  # Cluster1 DNS service
+    }
+    cluster2.global:53 {
+      errors
+      cache 30
+      forward . 10.200.0.10  # Cluster2 DNS service
+    }
+    cluster3.global:53 {
+      errors
+      cache 30
+      forward . 10.300.0.10  # Cluster3 DNS service
+    }
+
+    # Enable DNS resolution for .global domain
+    global:53 {
+      errors
+      cache 30
+      forward . /etc/resolv.conf
+      loadbalance round_robin
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: multicluster-dns
+  namespace: kube-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: multicluster-dns
+  template:
+    metadata:
+      labels:
+        app: multicluster-dns
+    spec:
+      containers:
+      - name: multicluster-dns
+        image: mclusterns/dns-controller:v1.0
+        args:
+        - "--v=2"
+        - "--logtostderr=true"
+        - "--domain=cluster.local,svc.cluster.local"
+        - "--zones=cluster1.global.,cluster2.global.,cluster3.global.,global."
+        ports:
+        - containerPort: 53
+          name: dns
+          protocol: UDP
+        - containerPort: 53
+          name: dns-tcp
+          protocol: TCP
+        - containerPort: 9153
+          name: metrics
+          protocol: TCP
+        resources:
+          limits:
+            memory: 200Mi
+          requests:
+            cpu: 100m
+            memory: 70Mi
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/multicluster-dns
+          readOnly: true
+      volumes:
+      - name: config-volume
+        configMap:
+          name: multicluster-dns-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: multicluster-dns
+  namespace: kube-system
+  labels:
+    app: multicluster-dns
+    k8s-app: multicluster-dns
+spec:
+  selector:
+    app: multicluster-dns
+  ports:
+  - name: dns
+    port: 53
+    protocol: UDP
+  - name: dns-tcp
+    port: 53
+    protocol: TCP
+  - name: metrics
+    port: 9153
+    protocol: TCP
+  clusterIP: 10.96.0.10  # Fixed IP for the multicluster DNS service
