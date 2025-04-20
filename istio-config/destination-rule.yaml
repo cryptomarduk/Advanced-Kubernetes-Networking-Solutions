@@ -1,0 +1,60 @@
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: frontend-dr
+  namespace: frontend
+spec:
+  host: frontend-service
+  # Define subsets for different versions of the service
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
+  # Traffic policy for load balancing and connection pool settings
+  trafficPolicy:
+    loadBalancer:
+      simple: ROUND_ROBIN
+    connectionPool:
+      tcp:
+        maxConnections: 100
+        connectTimeout: 5s
+      http:
+        http1MaxPendingRequests: 100
+        maxRequestsPerConnection: 10
+    # Outlier detection for circuit breaking
+    outlierDetection:
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 60s
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: backend-dr
+  namespace: backend
+spec:
+  host: backend-service
+  # Define subsets for different versions of the service
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  # Traffic policy for load balancing and connection pool settings
+  trafficPolicy:
+    loadBalancer:
+      simple: LEAST_CONN
+    connectionPool:
+      tcp:
+        maxConnections: 50
+        connectTimeout: 3s
+      http:
+        http1MaxPendingRequests: 50
+        maxRequestsPerConnection: 5
+    # Outlier detection for circuit breaking
+    outlierDetection:
+      consecutive5xxErrors: 3
+      interval: 20s
+      baseEjectionTime: 30s
